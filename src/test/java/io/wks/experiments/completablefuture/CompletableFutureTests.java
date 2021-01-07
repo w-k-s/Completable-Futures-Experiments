@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -37,7 +38,12 @@ public class CompletableFutureTests {
     }
 
     private IPInfo loadIPInfo() throws IOException {
-        var client = new OkHttpClient();
+        var client = new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .readTimeout(Duration.ofSeconds(30))
+                .writeTimeout(Duration.ofSeconds(30))
+                .callTimeout(Duration.ofSeconds(30))
+                .build();
         var request = new Request.Builder().url("https://ipinfo.io/json").build();
         var response = client.newCall(request).execute();
         var json = new JSONObject(response.body().string());
@@ -200,12 +206,10 @@ public class CompletableFutureTests {
 
     @Test
     public void doNextStepOnlyIfFirstStepSucceeds() throws ExecutionException, InterruptedException {
-        for (int i=0;i<20;i++) {
             var residence = randomFailure().thenCombine(getCountry(), (city, country) -> String.format("I live in %s, %s", city, country))
                     .handle((res, err) -> res == null ? "ERROR" : res)
                     .get();
 
             assertThat(Arrays.asList("ERROR", "I live in Dubai, AE")).contains(residence);
-        }
     }
 }
