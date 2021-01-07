@@ -6,11 +6,17 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class CompletableFutureTests {
 
@@ -25,7 +31,7 @@ public class CompletableFutureTests {
     }
 
     private static class MessageHolder {
-        private String message = null;
+        private String message = "";
     }
 
     private IPInfo loadIPInfo() throws IOException {
@@ -58,6 +64,10 @@ public class CompletableFutureTests {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    private CompletableFuture<String> getFailure() {
+        return CompletableFuture.failedFuture(new IllegalArgumentException("Here's Johny!"));
     }
 
     @Test
@@ -126,5 +136,57 @@ public class CompletableFutureTests {
         var future = getCity().thenCombine(getCountry(), (city, country) -> String.format("You live in %s, %s", city, country));
 
         assertThat(future.get()).isEqualTo("You live in Dubai, AE");
+    }
+
+    @Test
+    public void allOfRunsAllFuturesInParallelAndReturnsNothing() throws ExecutionException, InterruptedException {
+        var cityHolder = new MessageHolder();
+        var countryHolder = new MessageHolder();
+
+        CompletableFuture<String> cityFuture = getCity().thenApply((city) -> cityHolder.message = city);
+        CompletableFuture<String> countryFuture = getCountry().thenApply(country -> countryHolder.message = country);
+        CompletableFuture.allOf(cityFuture, countryFuture).get();
+
+        assertThat(cityHolder.message).isEqualTo("Dubai");
+        assertThat(countryHolder.message).isEqualTo("AE");
+    }
+
+    @Test
+    public void joinRunsAStreamOfFuturesInParallelThatCanBeCollected() {
+        List<String> results = Stream.of(getCity(), getCountry())
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        assertThat(results).isNotNull();
+        assertThat(results.size()).isEqualTo(2);
+        assertThat(results).contains("Dubai");
+        assertThat(results).contains("AE");
+    }
+
+    @Test
+    public void GIVEN_FuturesAreJoinedTogether_WHEN_oneFutureFails_THEN_allFuturesFail() {
+        assertThatThrownBy(() -> {
+            Stream.of(getCity(), getCountry(), getFailure())
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.toList());
+        }).isInstanceOf(CompletionException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("Here's Johny!");
+    }
+
+    @Test
+    public void handleAllowsHandlingAnExceptionWhenAFutureFails() {
+        var handledFailureFuture = getFailure().handle((res, err) -> res);
+
+        List<String> results = Stream.of(getCity(), getCountry(), handledFailureFuture)
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        assertThat(results).isNotNull();
+        assertThat(results.size()).isEqualTo(2);
+        assertThat(results).contains("Dubai");
+        assertThat(results).contains("AE");
+
     }
 }
