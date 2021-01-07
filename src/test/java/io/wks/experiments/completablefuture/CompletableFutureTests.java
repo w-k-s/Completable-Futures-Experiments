@@ -23,11 +23,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class CompletableFutureTests {
 
-    private static class IPInfo {
+    private static class Address {
         private final String city;
         private final String country;
 
-        public IPInfo(String city, String country) {
+        public Address(String city, String country) {
             this.city = city;
             this.country = country;
         }
@@ -37,17 +37,20 @@ public class CompletableFutureTests {
         private String message = "";
     }
 
-    private IPInfo loadIPInfo() throws IOException {
+    private Address reverseGeocode() throws IOException {
         var client = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .readTimeout(Duration.ofSeconds(30))
                 .writeTimeout(Duration.ofSeconds(30))
                 .callTimeout(Duration.ofSeconds(30))
                 .build();
-        var request = new Request.Builder().url("https://ipinfo.io/json").build();
+        var request = new Request.Builder()
+                .url("https://nominatim.openstreetmap.org/reverse?lat=25.2048&lon=55.2708&format=json")
+                .addHeader("accept-language","en")
+                .build();
         var response = client.newCall(request).execute();
-        var json = new JSONObject(response.body().string());
-        return new IPInfo(json.getString("city"), json.getString("country"));
+        var json = new JSONObject(response.body().string()).getJSONObject("address");
+        return new Address(json.getString("city"), json.getString("country_code").toUpperCase());
     }
 
     private CompletableFuture<String> getCountry() {
@@ -55,7 +58,7 @@ public class CompletableFutureTests {
 
         Executors.newCachedThreadPool().submit(() -> {
             try {
-                completableFuture.complete(loadIPInfo().country);
+                completableFuture.complete(reverseGeocode().country);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -67,7 +70,7 @@ public class CompletableFutureTests {
     private CompletableFuture<String> getCity() {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                return loadIPInfo().city;
+                return reverseGeocode().city;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
