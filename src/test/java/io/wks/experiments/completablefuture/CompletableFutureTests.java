@@ -6,8 +6,10 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -68,6 +70,13 @@ public class CompletableFutureTests {
 
     private CompletableFuture<String> getFailure() {
         return CompletableFuture.failedFuture(new IllegalArgumentException("Here's Johny!"));
+    }
+
+    public CompletableFuture<String> randomFailure() {
+        if (new Random().nextInt() % 2 == 0) {
+            return getCity();
+        }
+        return getFailure();
     }
 
     @Test
@@ -187,6 +196,16 @@ public class CompletableFutureTests {
         assertThat(results.size()).isEqualTo(2);
         assertThat(results).contains("Dubai");
         assertThat(results).contains("AE");
+    }
 
+    @Test
+    public void doNextStepOnlyIfFirstStepSucceeds() throws ExecutionException, InterruptedException {
+        for (int i=0;i<20;i++) {
+            var residence = randomFailure().thenCombine(getCountry(), (city, country) -> String.format("I live in %s, %s", city, country))
+                    .handle((res, err) -> res == null ? "ERROR" : res)
+                    .get();
+
+            assertThat(Arrays.asList("ERROR", "I live in Dubai, AE")).contains(residence);
+        }
     }
 }
